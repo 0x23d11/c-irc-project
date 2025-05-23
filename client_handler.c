@@ -57,6 +57,5 @@ void handle_client_session(int client_socket_fd) {
         }
     }
     printf("Ending session for client fd %d\n", client_socket_fd);
-    // When we move to threads, client_socket_fd will be closed here by the thread.
-    // For now, it's closed in main after this function returns.
+    // client_socket_fd is closed by the calling thread in server.c after this function returns.
 }

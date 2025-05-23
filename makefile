@@ -1,6 +1,6 @@
 CC = gcc
-CFLAGS = -Wall -Wextra -g
-LDFLAGS = # Add -pthread if needed
+CFLAGS = -Wall -Wextra -g -pthread
+LDFLAGS = -pthread
 SOURCES = server.c server_utils.c client_handler.c
 OBJECTS = $(SOURCES:.c=.o)
 EXECUTABLE = server
