@@ -12,5 +12,6 @@
 #define PORT 6667                   // Standard IRC port
 #define MAX_PENDING_CONNECTIONS 5   // Maximum number of pending connections
 #define BUFFER_SIZE 1024            // Buffer size for messages
+#define MAX_NICK_LENGTH 32          // Maximum length of a nickname
 
 #endif // COMMON_H

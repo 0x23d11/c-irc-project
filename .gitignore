@@ -4,3 +4,8 @@ server.out
 client.out
 
 *.o
+client_handler.o
+server_utils.o
+server.o
+
+server
