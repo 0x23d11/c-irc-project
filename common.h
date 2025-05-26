@@ -13,5 +13,13 @@
 #define MAX_PENDING_CONNECTIONS 5   // Maximum number of pending connections
 #define BUFFER_SIZE 1024            // Buffer size for messages
 #define MAX_NICK_LENGTH 32          // Maximum length of a nickname
+#define MAX_CLIENTS 100             // Maximum number of clients
+
+// struct to store client information
+typedef struct {
+  int client_socket_fd;
+  char nickname[MAX_NICK_LENGTH];
+  int active; // 0 = inactive, 1 = active
+} client_info_t;
 
 #endif // COMMON_H

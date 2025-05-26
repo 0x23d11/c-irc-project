@@ -1,4 +1,5 @@
 #include "client_handler.h"
+#include "server_utils.h"
 
 // helper function to remove trailing newline characters
 void strip_newline(char *str) {
@@ -29,6 +30,7 @@ void handle_client_session(int client_socket_fd) {
     char buffer[BUFFER_SIZE];
     char reply_buffer[BUFFER_SIZE + 100]; // Max reply size
     ssize_t bytes_received;
+    int client_index = -1; // to store the index of the client in the clients array
 
     printf("Starting session for client fd %d. Waiting for nickname...\n", client_socket_fd);
 
@@ -49,6 +51,16 @@ void handle_client_session(int client_socket_fd) {
             send(client_socket_fd, reply_buffer, strlen(reply_buffer), 0);
             // No need to break or return here, the function will end, and the thread will close the socket.
             return; // Exit this handler function, socket will be closed by the thread
+        }
+
+        // Add client to the clients array
+        client_index = add_client(client_socket_fd, nickname);
+        if (client_index == -1) {
+          // If client addition fails, send error message and disconnect
+          printf("Server full. Disconnecting client fd %d (%s)\n", client_socket_fd, nickname);
+          snprintf(reply_buffer, sizeof(reply_buffer), "Server is currently full. Please try again later. Disconnecting.\\n");
+          send(client_socket_fd, reply_buffer, strlen(reply_buffer), 0);
+          return; // Exit handler, socket will be closed by thread
         }
 
         printf("Client fd %d set nickname to: %s\n", client_socket_fd, nickname);
@@ -79,7 +91,7 @@ void handle_client_session(int client_socket_fd) {
               continue;
             }
 
-            printf("[%s] (fd %d) sent: %s\\n", nickname, client_socket_fd, buffer);
+            printf("[%s] (fd %d, idx %d) sent: %s\\n", nickname, client_socket_fd, client_index, buffer);
 
             // Prepare reply
             snprintf(reply_buffer, sizeof(reply_buffer), "[Server] %s: %s\n", nickname, buffer);
@@ -94,13 +106,18 @@ void handle_client_session(int client_socket_fd) {
             }
 
         } else if (bytes_received == 0) {
-            printf("[%s] (fd %d) disconnected.\n", nickname, client_socket_fd);
+            printf("[%s] (fd %d, idx %d) disconnected.\n", nickname, client_socket_fd, client_index);
             break;
         } else { // bytes_received < 0
             perror("recv failed");
             break;
         }
     }
-    printf("Ending session for %s (fd %d)\n", nickname, client_socket_fd);
+    printf("Ending session for %s (fd %d, idx %d)\n", nickname, client_socket_fd, client_index);
+
+    // if the client was added to the clients array, remove it
+    if (client_index != -1) {
+      remove_client(client_index);
+    }
     // client_socket_fd is closed by the calling thread in server.c after this function returns.
 }

@@ -3,6 +3,11 @@
 #include "client_handler.h"
 #include <pthread.h>
 
+// Global array to store client information
+client_info_t clients[MAX_CLIENTS];
+// Mutex for thread-safe access to clients array
+pthread_mutex_t clients_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 // Struct to pass arguments to the client handler thread
 typedef struct {
     int client_socket_fd;
@@ -28,6 +33,8 @@ int main() {
     int server_fd;
     struct sockaddr_storage client_address; // Use sockaddr_storage for IPv4/IPv6 compatibility
     socklen_t client_address_len;
+
+    initialize_clients_array();
 
     // setup_server_socket is now defined in server_utils.c
     server_fd = setup_server_socket(PORT, MAX_PENDING_CONNECTIONS);
