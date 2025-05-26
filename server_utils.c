@@ -103,3 +103,18 @@ void remove_client(int client_index) {
 
   pthread_mutex_unlock(&clients_mutex); // unlock the mutex 
 }
+
+
+int is_nickname_taken(const char *nickname) {
+  pthread_mutex_lock(&clients_mutex); // lock the mutex to prevent race conditions
+
+  for (int i = 0;i < MAX_CLIENTS; i++) {
+    if (clients[i].active == 1 && strcmp(clients[i].nickname, nickname) == 0) {
+      pthread_mutex_unlock(&clients_mutex); // unlock the mutex
+      return 1; // nickname is taken
+    }
+  } 
+
+  pthread_mutex_unlock(&clients_mutex); // unlock the mutex
+  return 0; // nickname is not taken
+}
