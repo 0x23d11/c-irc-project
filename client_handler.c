@@ -1,5 +1,10 @@
 #include "client_handler.h"
 #include "server_utils.h"
+#include <pthread.h>
+
+
+extern pthread_mutex_t clients_mutex;
+extern client_info_t clients[MAX_CLIENTS];
 
 // helper function to remove trailing newline characters
 void strip_newline(char *str) {
@@ -122,6 +127,7 @@ void handle_client_session(int client_socket_fd) {
 
                 char *command = NULL;
                 char *saveptr = NULL;
+                char *args = NULL;
 
                 char command_buffer[BUFFER_SIZE];
                 strncpy(command_buffer, buffer, BUFFER_SIZE -1);
@@ -129,6 +135,10 @@ void handle_client_session(int client_socket_fd) {
 
 
                 command = strtok_r(command_buffer + 1, " ", &saveptr); 
+                if (saveptr != NULL && *saveptr != '\0') { // Check if there is anything after the first space
+                    args = saveptr; // The rest of the string is arguments
+                }
+
 
                 if (command != NULL) {
                     if (strcmp(command, "quit") == 0) {
@@ -136,7 +146,46 @@ void handle_client_session(int client_socket_fd) {
                         send(client_socket_fd, reply_buffer, strlen(reply_buffer), 0); // Best effort send
                         printf("[%s] (fd %d, idx %d) issued /quit command. Disconnecting.\n", nickname, client_socket_fd, client_index);
                         break; // Exit the message loop, client will be cleaned up
-                    }
+                    } else if (strcmp(command, "nick") == 0) {
+                        if (args == NULL || strlen(args) == 0) {
+                            snprintf(reply_buffer, sizeof(reply_buffer), "Usage: /nick <new_nickname>\n");
+                        } else {
+                            char new_nick[MAX_NICK_LENGTH];
+                            strncpy(new_nick, args, MAX_NICK_LENGTH - 1);
+                            new_nick[MAX_NICK_LENGTH - 1] = '\0';
+                            strip_newline(new_nick); // Clean it up
+
+                            if (strlen(new_nick) == 0) {
+                                snprintf(reply_buffer, sizeof(reply_buffer), "New nickname cannot be empty.\n");
+                            } else if (strlen(new_nick) >= MAX_NICK_LENGTH) {
+                                snprintf(reply_buffer, sizeof(reply_buffer), "New nickname is too long (max %d chars).\n", MAX_NICK_LENGTH - 1);
+                            } else if (strcmp(nickname, new_nick) == 0) {
+                                snprintf(reply_buffer, sizeof(reply_buffer), "You are already known as %s.\n", new_nick);
+                            } else if (is_nickname_taken(new_nick)) {
+                                snprintf(reply_buffer, sizeof(reply_buffer), "Nickname '%s' is already taken.\n", new_nick);
+                            } else {
+                                // Valid new nickname, proceed to update
+                                char old_nickname_log[MAX_NICK_LENGTH];
+                                strncpy(old_nickname_log, nickname, MAX_NICK_LENGTH); // For logging
+
+                                pthread_mutex_lock(&clients_mutex);
+                                strncpy(clients[client_index].nickname, new_nick, MAX_NICK_LENGTH - 1);
+                                clients[client_index].nickname[MAX_NICK_LENGTH - 1] = '\0';
+                                pthread_mutex_unlock(&clients_mutex);
+
+                                // Update local nickname variable as well
+                                strncpy(nickname, new_nick, MAX_NICK_LENGTH -1);
+                                nickname[MAX_NICK_LENGTH-1] = '\0';
+
+                                snprintf(reply_buffer, sizeof(reply_buffer), "Your nickname has been changed to %s.\n", nickname);
+                                printf("[%s] (fd %d, idx %d) changed nickname to %s.\n", old_nickname_log, client_socket_fd, client_index, nickname);
+                                // TODO: Broadcast nickname change to other users/channels
+                            }
+                        }
+                        if (send(client_socket_fd, reply_buffer, strlen(reply_buffer), 0) == -1) {
+                            perror("send nick response failed");
+                        }
+                    } 
                     // Add other command handlers here later (e.g., /nick, /help)
                     // else if (strcmp(command, "nick") == 0) { /* ... */ }
                     else {
