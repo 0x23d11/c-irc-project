@@ -33,7 +33,7 @@ void handle_client_session(int client_socket_fd) {
     int client_index = -1; 
     int nickname_chosen = 0; 
 
-    printf("Starting session for client fd %d. Waiting for nickname...\\n", client_socket_fd);
+    printf("Starting session for client fd %d. Waiting for nickname...\n", client_socket_fd);
 
     // Loop for nickname acquisition
     while (!nickname_chosen) {
@@ -52,7 +52,7 @@ void handle_client_session(int client_socket_fd) {
 
             if (strlen(nickname) == 0) { 
                 // Client sent an empty nickname string after stripping newline
-                snprintf(reply_buffer, sizeof(reply_buffer), "Nickname cannot be empty. Please try again.\\n");
+                snprintf(reply_buffer, sizeof(reply_buffer), "Nickname cannot be empty. Please try again.\n");
                 if (send(client_socket_fd, reply_buffer, strlen(reply_buffer), 0) == -1) {
                      perror("send empty nickname error failed"); return; }
                 continue; // Ask for nickname again
@@ -62,7 +62,7 @@ void handle_client_session(int client_socket_fd) {
             // I have corrected this above.
 
             if (is_nickname_taken(nickname)) {
-                snprintf(reply_buffer, sizeof(reply_buffer), "Nickname '%s' is already taken. Please choose another.\\n", nickname);
+                snprintf(reply_buffer, sizeof(reply_buffer), "Nickname '%s' is already taken. Please choose another.\n", nickname);
                  if (send(client_socket_fd, reply_buffer, strlen(reply_buffer), 0) == -1) {
                      perror("send nickname taken error failed"); return; }
                 continue; // Ask for nickname again
@@ -72,7 +72,7 @@ void handle_client_session(int client_socket_fd) {
             nickname_chosen = 1; // Set flag to exit loop
 
         } else if (bytes_received == 0) {
-            printf("Client (%d) disconnected before choosing a nickname.\\n", client_socket_fd);
+            printf("Client (%d) disconnected before choosing a nickname.\n", client_socket_fd);
             return; 
         } else { 
             perror("recv nickname failed");
@@ -85,16 +85,16 @@ void handle_client_session(int client_socket_fd) {
     client_index = add_client(client_socket_fd, nickname);
     if (client_index == -1) {
         // If client addition fails, send error message and disconnect
-        printf("Server full. Disconnecting client fd %d (%s)\\n", client_socket_fd, nickname);
-        snprintf(reply_buffer, sizeof(reply_buffer), "Server is currently full. Please try again later. Disconnecting.\\n");
+        printf("Server full. Disconnecting client fd %d (%s)\n", client_socket_fd, nickname);
+        snprintf(reply_buffer, sizeof(reply_buffer), "Server is currently full. Please try again later. Disconnecting.\n");
         send(client_socket_fd, reply_buffer, strlen(reply_buffer), 0); // best effort send
         return; 
     }
 
-    printf("Client fd %d set nickname to: %s, added at index %d\\n", client_socket_fd, nickname, client_index);
+    printf("Client fd %d set nickname to: %s, added at index %d\n", client_socket_fd, nickname, client_index);
 
     // Send welcome message
-    snprintf(reply_buffer, sizeof(reply_buffer), "Welcome, %s! You are connected.\\n", nickname);
+    snprintf(reply_buffer, sizeof(reply_buffer), "Welcome, %s! You are connected.\n", nickname);
     if (send(client_socket_fd, reply_buffer, strlen(reply_buffer), 0) == -1) {
         perror("send welcome message failed");
         // if send failed, client likely disconnected. We'll proceed to remove_client below.
@@ -102,7 +102,7 @@ void handle_client_session(int client_socket_fd) {
     // ----- End of the block that was duplicated -----
 
     // ----- This is the start of the main message loop -----
-    printf("Starting message loop for %s (fd %d, idx %d)\\n", nickname, client_socket_fd, client_index);
+    printf("Starting message loop for %s (fd %d, idx %d)\n", nickname, client_socket_fd, client_index);
 
     while (1) {
         memset(buffer, 0, BUFFER_SIZE);
@@ -116,20 +116,72 @@ void handle_client_session(int client_socket_fd) {
               continue;
             }
 
-            printf("[%s] (fd %d, idx %d) sent: %s\\n", nickname, client_socket_fd, client_index, buffer);
+            // check if the message is a command
+            if (buffer[0] == '/') {
+                printf("[%s] (fd %d, idx %d) sent COMMAND: %s\n", nickname, client_socket_fd, client_index, buffer);
 
-            snprintf(reply_buffer, sizeof(reply_buffer), "[Server] %s: %s\\n", nickname, buffer);
-            
-            ssize_t bytes_sent = send(client_socket_fd, reply_buffer, strlen(reply_buffer), 0);
-            if (bytes_sent == -1) {
-                perror("send failed");
-                break; 
-            } else if ((size_t)bytes_sent < strlen(reply_buffer)) {
-                printf("Warning: partial send on fd %d.\\n", client_socket_fd);
+                char *command = NULL;
+                char *saveptr = NULL;
+
+                char command_buffer[BUFFER_SIZE];
+                strncpy(command_buffer, buffer, BUFFER_SIZE -1);
+                command_buffer[BUFFER_SIZE-1] = '\0';
+
+
+                command = strtok_r(command_buffer + 1, " ", &saveptr); 
+
+                if (command != NULL) {
+                    if (strcmp(command, "quit") == 0) {
+                        snprintf(reply_buffer, sizeof(reply_buffer), "Goodbye, %s! Disconnecting.\n", nickname);
+                        send(client_socket_fd, reply_buffer, strlen(reply_buffer), 0); // Best effort send
+                        printf("[%s] (fd %d, idx %d) issued /quit command. Disconnecting.\n", nickname, client_socket_fd, client_index);
+                        break; // Exit the message loop, client will be cleaned up
+                    }
+                    // Add other command handlers here later (e.g., /nick, /help)
+                    // else if (strcmp(command, "nick") == 0) { /* ... */ }
+                    else {
+                        snprintf(reply_buffer, sizeof(reply_buffer), "Unknown command: /%s\n", command);
+                        if (send(client_socket_fd, reply_buffer, strlen(reply_buffer), 0) == -1) {
+                            perror("send unknown command failed");
+                            // If send fails, client might have disconnected.
+                            // The loop will break on next recv or if quit was issued.
+                        }
+                    }
+                } else {
+                    // Empty command like "/" or "/ "
+                    snprintf(reply_buffer, sizeof(reply_buffer), "Empty command. Type /help for available commands.\n");
+                     if (send(client_socket_fd, reply_buffer, strlen(reply_buffer), 0) == -1) {
+                        perror("send empty command failed");
+                    }
+                }
+                
+                // TODO: Parse command and arguments
+                // For now, just acknowledge command received, no reply to client yet for commands
+                // Example: /nick new_nickname
+                //          /quit
+                //          /help
+                
+                // Placeholder for sending a message back to client for unknown command
+                // snprintf(reply_buffer, sizeof(reply_buffer), "Unknown command: %s\\n", buffer);
+                // send(client_socket_fd, reply_buffer, strlen(reply_buffer), 0);
+            } else {
+                // if the message is not a command, it is a message
+                printf("[%s] (fd %d, idx %d) sent MESSAGE: %s\n", nickname, client_socket_fd, client_index, buffer);
+
+
+                snprintf(reply_buffer, sizeof(reply_buffer), "[Server] %s: %s\n", nickname, buffer);
+                
+                ssize_t bytes_sent = send(client_socket_fd, reply_buffer, strlen(reply_buffer), 0);
+                if (bytes_sent == -1) {
+                    perror("send failed");
+                    break; 
+                } else if ((size_t)bytes_sent < strlen(reply_buffer)) {
+                    printf("Warning: partial send on fd %d.\n", client_socket_fd);
+                }
             }
 
         } else if (bytes_received == 0) {
-            printf("[%s] (fd %d, idx %d) disconnected.\\n", nickname, client_socket_fd, client_index);
+            printf("[%s] (fd %d, idx %d) disconnected.\n", nickname, client_socket_fd, client_index);
             break;
         } else { 
             perror("recv failed");
@@ -137,7 +189,7 @@ void handle_client_session(int client_socket_fd) {
         }
     } // ----- End of main message loop -----
 
-    printf("Ending session for %s (fd %d, idx %d)\\n", nickname, client_socket_fd, client_index);
+    printf("Ending session for %s (fd %d, idx %d)\n", nickname, client_socket_fd, client_index);
 
     if (client_index != -1) {
       remove_client(client_index);
